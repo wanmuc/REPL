@@ -6,13 +6,12 @@
 
 #include <string>
 
-typedef void (*signalHandler)(int signal_number);
-
 class REPL {
  public:
-  REPL(const std::string& prefix, const std::string& exit_cmd) {
+  REPL(const std::string& prefix, const std::string& exit_cmd, size_t cmd_max_reserved_cnt) {
     prefix_ = prefix;
     exit_cmd_ = exit_cmd;
+    cmd_max_reserved_cnt_ = cmd_max_reserved_cnt;
     tcgetattr(STDIN_FILENO, &term_old_attr_);  // 获取终端属性
     term_new_attr_ = term_old_attr_;
     term_new_attr_.c_lflag &= ~(ICANON | ECHO);         // 关闭标准输入模式和回显
@@ -230,6 +229,10 @@ class REPL {
     if (cmd_line != "") {
       last_execute_cmd_ = cmd_line;
       history_cmds_.push_back(last_execute_cmd_);
+      // 只保留最近100条执行的命令
+      if (history_cmds_.size() > cmd_max_reserved_cnt_) {
+        history_cmds_.erase(history_cmds_.begin());
+      }
     }
   }
   virtual void doExecute(std::string& cmd_line, std::string& output) { output = "execute line[" + cmd_line + "]"; }
@@ -239,6 +242,7 @@ class REPL {
   std::string exit_cmd_;
   std::string last_execute_cmd_;
   std::vector<std::string> history_cmds_;
+  size_t cmd_max_reserved_cnt_;
   struct termios term_old_attr_;  // 旧的终端属性
   struct termios term_new_attr_;  // 新的终端属性
 };
