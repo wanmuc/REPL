@@ -3,7 +3,7 @@
 - 本仓库实现了通用的REPL封装，使用时只需要引用一个.hpp的头文件。
 - REPL执行流程如下图所示。
 
-![img.png](https://github.com/wanmuc/REPL/blob/main/img.png)
+![img.png](https://github.com/wanmuc/REPL/blob/main/img.png#pic_center)
 
 # 2.实现的特性
 本节介绍了REPL库提供的特性。
@@ -47,3 +47,7 @@ int main(int argc, char *argv[]) {
 - 先创建一个REPL的对象实例之后，再调用Run即可。
 - 如果想要实现execute的功能只需要重新创建一个类。
 - 这个类它继承了REPL类，并再实现doExecute函数即可。
+
+# 5.微信公众号
+欢迎关注微信公众号「Linux后端开发工程实践」，第一时间获取最新文章！扫码即可订阅。
+![img.png](https://github.com/wanmuc/REPL/blob/main/mp_account.png#pic_center=660*180)
