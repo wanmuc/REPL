@@ -18,7 +18,7 @@ class REPL {
     tcsetattr(STDIN_FILENO, TCSANOW, &term_new_attr_);  // 设置终端属性
   }
   void Run() {
-    while (not isFinish()) {
+    while (not isExit()) {
       printPrefix();
       std::string output;
       std::string cmd_line;
@@ -29,7 +29,7 @@ class REPL {
   }
 
  private:
-  bool isFinish() {
+  bool isExit() {
     if (exit_cmd_ == last_execute_cmd_) {
       tcsetattr(STDIN_FILENO, TCSANOW, &term_old_attr_);  // 恢复终端属性
       return true;
