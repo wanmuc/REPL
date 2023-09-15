@@ -8,20 +8,23 @@
 
 class REPL {
  public:
-  REPL(const std::string& prefix, const std::string& exit_cmd, size_t cmd_max_reserved_cnt) {
+  REPL(const std::string& prefix, const std::string& continue_prefix, const std::string& exit_cmd,
+       size_t cmd_max_reserved_cnt) {
     prefix_ = prefix;
     exit_cmd_ = exit_cmd;
+    continue_prefix_ = continue_prefix;
+    is_complete_cmd_ = true;
     cmd_max_reserved_cnt_ = cmd_max_reserved_cnt;
     tcgetattr(STDIN_FILENO, &term_old_attr_);  // 获取终端属性
     term_new_attr_ = term_old_attr_;
-    term_new_attr_.c_lflag &= ~(ICANON | ECHO);         // 关闭标准输入模式和回显
+    term_new_attr_.c_lflag &= ~(ICANON | ECHO);  // 关闭标准输入模式和回显
     tcsetattr(STDIN_FILENO, TCSANOW, &term_new_attr_);  // 设置终端属性
   }
   void Run() {
+    std::string output;
+    std::string cmd_line;
     while (not isExit()) {
       printPrefix();
-      std::string output;
-      std::string cmd_line;
       read(cmd_line);
       execute(cmd_line, output);
       print(output);
@@ -36,16 +39,23 @@ class REPL {
     }
     return false;
   }
-  void printPrefix() { printf("%s", prefix_.c_str()); }
+  void printPrefix() {
+    if (is_complete_cmd_) {
+      printf("%s ", prefix_.c_str());
+    } else {
+      printf("%s ", continue_prefix_.c_str());
+    }
+  }
   void read(std::string& cmd_line) {
     char ch;
     cmd_line = "";
-    constexpr char kBackspace = 127;                 // 回退键
-    constexpr char kEsc = 27;                        // 转义序列的标识：kEsc
-    constexpr char kCtrlA = 1;                       // 【Ctrl + a】-> 输入光标移动到行首
-    constexpr char kCtrlU = 21;                      // 【Ctrl + u】-> 清空当前命令行的输入
-    bool convert = false;                            // 是否进入转义字符
-    int cursor_pos = 0;                              // 光标位置，初始化为0
+    constexpr char kBackspace = 127;  // 回退键
+    constexpr char kEsc = 27;  // 转义序列的标识：kEsc
+    constexpr char kCtrlA = 1;  // 【Ctrl + a】-> 输入光标移动到行首
+    constexpr char kCtrlE = 5;  // 【Ctrl + e】-> 输入光标移动到行尾
+    constexpr char kCtrlU = 21;  // 【Ctrl + u】-> 清空当前命令行的输入
+    bool convert = false;  // 是否进入转义字符
+    int cursor_pos = 0;  // 光标位置，初始化为0
     int cur_history_cmd_pos = history_cmds_.size();  // 当前历史命令的位置
     while (true) {
       ch = getchar();
@@ -59,6 +69,10 @@ class REPL {
       }
       if (ch == kCtrlA) {
         cursorMoveHead(cursor_pos);
+        continue;
+      }
+      if (ch == kCtrlE) {
+        cursorMoveEnd(cursor_pos, cmd_line.size());
         continue;
       }
       if (ch == kCtrlU) {
@@ -93,7 +107,11 @@ class REPL {
       }
     }
   }
-  void print(std::string& output) { printf("%s\n", output.c_str()); }
+  void print(std::string& output) {
+    if (output != "") {
+      printf("%s\n", output.c_str());
+    }
+  }
   void printChar(char ch, int& cursor_pos, std::string& cmd_line) {
     if (cursor_pos == cmd_line.size()) {  // 光标在输入的尾部，则把字符插入尾部
       printf("%c", ch);
@@ -149,7 +167,7 @@ class REPL {
     //  执行到这里，说明是在光标在输入的中间，需要删除光标前面的一个字符，并把后面的字段都向前移动一格
     std::string tail = cmd_line.substr(cursor_pos);
     cursor_pos--;
-    printf("\b");                                            // 退一格
+    printf("\b");  // 退一格
     for (size_t i = cursor_pos; i < cmd_line.size(); i++) {  // 抹掉后面的输出
       printf(" ");
     }
@@ -200,6 +218,12 @@ class REPL {
     }
     cursor_pos = 0;
   }
+  void cursorMoveEnd(int& cursor_pos, int cmd_line_len) {
+    while (cursor_pos < cmd_line_len) {
+      printf("\033[1C");  // 光标右移一格的组合
+      cursor_pos++;
+    }
+  }
   void cursorMoveLeft(int& cursor_pos, bool& convert) {
     convert = false;
     if (cursor_pos > 0) {
@@ -224,25 +248,32 @@ class REPL {
     str.erase(str.find_last_not_of(" ") + 1);
   }
   void execute(std::string& cmd_line, std::string& output) {
+    output = "";
     trim(cmd_line);
-    doExecute(cmd_line, output);
+    is_complete_cmd_ = true;
     if (cmd_line != "") {
       last_execute_cmd_ = cmd_line;
       history_cmds_.push_back(last_execute_cmd_);
-      // 只保留最近100条执行的命令
+      // 只保留最近cmd_max_reserved_cnt_条执行的命令
       if (history_cmds_.size() > cmd_max_reserved_cnt_) {
         history_cmds_.erase(history_cmds_.begin());
       }
+      is_complete_cmd_ = handlerCmdLine(cmd_line, output);
     }
   }
-  virtual void doExecute(std::string& cmd_line, std::string& output) { output = "execute line[" + cmd_line + "]"; }
+  virtual bool handlerCmdLine(std::string& cmd_line, std::string& output) {
+    output = "handler[" + cmd_line + "]";
+    return true;
+  }
 
  private:
-  std::string prefix_;
-  std::string exit_cmd_;
-  std::string last_execute_cmd_;
-  std::vector<std::string> history_cmds_;
-  size_t cmd_max_reserved_cnt_;
+  std::string prefix_;  // 在命令行终端中等待用户输入而输出的提示前缀
+  std::string continue_prefix_;  // 用户输入的命令还不完整时，需要等待用户继续输入时输出的提示前缀
+  std::string exit_cmd_;  // 退出命令
+  std::string last_execute_cmd_;  // 最后一次执行的命令
+  bool is_complete_cmd_;  // 用户当前输入的命令是否完成
+  std::vector<std::string> history_cmds_;  // 保留历史命令的列表
+  size_t cmd_max_reserved_cnt_;  // 最多保留最近多少条历史命令
   struct termios term_old_attr_;  // 旧的终端属性
   struct termios term_new_attr_;  // 新的终端属性
 };
