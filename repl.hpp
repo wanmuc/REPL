@@ -4,9 +4,18 @@
 #include <termios.h>
 #include <unistd.h>
 
+#include <iostream>
 #include <string>
 
 class REPL {
+  enum InputStatus {
+    INIT = 1,  // 初始化
+    ESC = 2,  // ESC
+    DOUBLE_ESC = 3,  // 双重ESC
+    CURSOR_MOVE_CHAR = 4,  // 按字符移动光标
+    CURSOR_MOVE_WORD = 5,  // 按单词移动光标
+  };
+
  public:
   REPL(const std::string& prefix, const std::string& continue_prefix, const std::string& exit_cmd,
        size_t cmd_max_reserved_cnt) {
@@ -49,61 +58,74 @@ class REPL {
   void read(std::string& cmd_line) {
     char ch;
     cmd_line = "";
-    constexpr char kBackspace = 127;  // 回退键
-    constexpr char kEsc = 27;  // 转义序列的标识：kEsc
+    constexpr char kEsc = 27;  // Esc键
     constexpr char kCtrlA = 1;  // 【Ctrl + a】-> 输入光标移动到行首
     constexpr char kCtrlE = 5;  // 【Ctrl + e】-> 输入光标移动到行尾
     constexpr char kCtrlU = 21;  // 【Ctrl + u】-> 清空当前命令行的输入
-    bool convert = false;  // 是否进入转义字符
+    constexpr char kBackspace = 127;  // 回退键
     int cursor_pos = 0;  // 光标位置，初始化为0
     int cur_history_cmd_pos = history_cmds_.size();  // 当前历史命令的位置
+    int input_status = INIT;
     while (true) {
       ch = getchar();
-      if (ch == kEsc) {
-        convert = true;
-        continue;
-      }
-      if (ch == kBackspace) {
-        backSpace(cursor_pos, cmd_line);
-        continue;
-      }
-      if (ch == kCtrlA) {
-        cursorMoveHead(cursor_pos);
-        continue;
-      }
-      if (ch == kCtrlE) {
-        cursorMoveEnd(cursor_pos, cmd_line.size());
-        continue;
-      }
-      if (ch == kCtrlU) {
-        clearPrefixCmdLine(cursor_pos, cmd_line);
-        continue;
-      }
       if (ch == '\n') {
         printf("%c", ch);
         return;
       }
-      if (convert && ch == 'A') {  // 上移光标-上一条历史命令
-        showPreCmd(cur_history_cmd_pos, cursor_pos, cmd_line, convert);
+      if (input_status == INIT) {
+        if (ch == kBackspace) {
+          backSpace(cursor_pos, cmd_line);
+        } else if (ch == kCtrlA) {
+          cursorMoveHead(cursor_pos);
+        } else if (ch == kCtrlE) {
+          cursorMoveEnd(cursor_pos, cmd_line.size());
+        } else if (ch == kCtrlU) {
+          clearPrefixCmdLine(cursor_pos, cmd_line);
+        } else if (isprint(ch)) {
+          printChar(ch, cursor_pos, cmd_line);
+        } else if (ch == kEsc) {
+          input_status = ESC;
+        }
         continue;
-      }
-      if (convert && ch == 'B') {  // 下移光标-下一条历史命令
-        showNextCmd(cur_history_cmd_pos, cursor_pos, cmd_line, convert);
+      } else if (input_status == ESC) {
+        if (ch == kEsc) {
+          input_status = DOUBLE_ESC;
+        } else if (ch == '[') {
+          input_status = CURSOR_MOVE_CHAR;
+        } else {
+          assert(0);
+        }
         continue;
-      }
-      if (convert && ch == 'C') {  // 右移光标
-        cursorMoveRight(cursor_pos, cmd_line.size(), convert);
+      } else if (input_status == DOUBLE_ESC) {
+        if (ch == '[') {
+          input_status = CURSOR_MOVE_WORD;
+        } else {
+          assert(0);
+        }
         continue;
-      }
-      if (convert && ch == 'D') {  // 左移光标
-        cursorMoveLeft(cursor_pos, convert);
+      } else if (input_status == CURSOR_MOVE_CHAR) {
+        if (ch == 'A') {  // 上移光标-上一条历史命令
+          showPreCmd(cur_history_cmd_pos, cursor_pos, cmd_line);
+        } else if (ch == 'B') {  // 下移光标-下一条历史命令
+          showNextCmd(cur_history_cmd_pos, cursor_pos, cmd_line);
+        } else if (ch == 'C') {  // 右移光标
+          cursorMoveRight(cursor_pos, cmd_line);
+        } else if (ch == 'D') {  // 左移光标
+          cursorMoveLeft(cursor_pos);
+        } else {
+          assert(0);
+        }
+        input_status = INIT;
         continue;
-      }
-      if (convert && ch == '[') {  // 转义字符，则不打印'['
-        continue;
-      }
-      if (isprint(ch)) {
-        printChar(ch, cursor_pos, cmd_line);
+      } else if (input_status == CURSOR_MOVE_WORD) {
+        if (ch == 'C') {
+          cursorMoveRightOneWord(cursor_pos, cmd_line);
+        } else if (ch == 'D') {
+          cursorMoveLeftOneWord(cursor_pos, cmd_line);
+        } else {
+          assert(0);
+        }
+        input_status = INIT;
       }
     }
   }
@@ -128,8 +150,7 @@ class REPL {
       printf("\033[1D");
     }
   }
-  void showPreCmd(int& cur_history_cmd_pos, int& cursor_pos, std::string& cmd_line, bool& convert) {
-    convert = false;
+  void showPreCmd(int& cur_history_cmd_pos, int& cursor_pos, std::string& cmd_line) {
     if (history_cmds_.size() > 0 && cur_history_cmd_pos > 0) {  // 有历史命令才处理
       clearCmdLine(cursor_pos, cmd_line);
       cur_history_cmd_pos--;
@@ -141,8 +162,7 @@ class REPL {
     }
   }
 
-  void showNextCmd(int& cur_history_cmd_pos, int& cursor_pos, std::string& cmd_line, bool& convert) {
-    convert = false;
+  void showNextCmd(int& cur_history_cmd_pos, int& cursor_pos, std::string& cmd_line) {
     if (history_cmds_.size() > 0 && cur_history_cmd_pos < history_cmds_.size() - 1) {  // 有历史命令才处理
       clearCmdLine(cursor_pos, cmd_line);
       cur_history_cmd_pos++;
@@ -224,8 +244,7 @@ class REPL {
       cursor_pos++;
     }
   }
-  void cursorMoveLeft(int& cursor_pos, bool& convert) {
-    convert = false;
+  void cursorMoveLeft(int& cursor_pos) {
     if (cursor_pos > 0) {
       printf("\033[1D");  // 光标左移一格的组合
       cursor_pos--;
@@ -233,9 +252,26 @@ class REPL {
       printf("\a");
     }
   }
-  void cursorMoveRight(int& cursor_pos, int cmd_line_len, bool& convert) {
-    convert = false;
-    if (cursor_pos < cmd_line_len) {
+  void cursorMoveRight(int& cursor_pos, const std::string& cmd_line) {
+    if (cursor_pos < cmd_line.size()) {
+      printf("\033[1C");  // 光标右移一格的组合
+      cursor_pos++;
+    } else {
+      printf("\a");
+    }
+  }
+  void cursorMoveLeftOneWord(int& cursor_pos, const std::string& cmd_line) {
+    // TODO
+    if (cursor_pos > 0) {
+      printf("\033[1D");  // 光标左移一格的组合
+      cursor_pos--;
+    } else {
+      printf("\a");
+    }
+  }
+  void cursorMoveRightOneWord(int& cursor_pos, const std::string& cmd_line) {
+    // TODO
+    if (cursor_pos < cmd_line.size()) {
       printf("\033[1C");  // 光标右移一格的组合
       cursor_pos++;
     } else {
