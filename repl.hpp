@@ -261,21 +261,32 @@ class REPL {
     }
   }
   void cursorMoveLeftOneWord(int& cursor_pos, const std::string& cmd_line) {
-    // TODO
-    if (cursor_pos > 0) {
+    // 一直往左退一格，只要光标前面的字符是空白符
+    while (cursor_pos - 1 >= 0 && isblank(cmd_line[cursor_pos - 1])) {
       printf("\033[1D");  // 光标左移一格的组合
       cursor_pos--;
-    } else {
-      printf("\a");
+    }
+    // 一直往左退一格，只要光标前面的字符是非空白符
+    while (cursor_pos - 1 >= 0 && !isblank(cmd_line[cursor_pos - 1])) {
+      printf("\033[1D");  // 光标左移一格的组合
+      cursor_pos--;
     }
   }
   void cursorMoveRightOneWord(int& cursor_pos, const std::string& cmd_line) {
-    // TODO
-    if (cursor_pos < cmd_line.size()) {
+    // 一直往右退一格，只要光标后面的字符是空白符
+    while (cursor_pos + 1 < cmd_line.size() && isblank(cmd_line[cursor_pos + 1])) {
       printf("\033[1C");  // 光标右移一格的组合
       cursor_pos++;
-    } else {
-      printf("\a");
+    }
+    // 一直往右退一格，只要光标后面的字符是非空白符
+    while (cursor_pos + 1 < cmd_line.size() && !isblank(cmd_line[cursor_pos + 1])) {
+      printf("\033[1C");  // 光标右移一格的组合
+      cursor_pos++;
+    }
+    // 光标需要在单词的后面，故这里需要再退一格
+    if (cursor_pos + 1 <= cmd_line.size()) {
+      printf("\033[1C");  // 光标右移一格的组合
+      cursor_pos++;
     }
   }
   void trim(std::string& str) {
