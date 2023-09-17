@@ -112,8 +112,6 @@ class REPL {
           cursorMoveRight(cursor_pos, cmd_line);
         } else if (ch == 'D') {  // 左移光标
           cursorMoveLeft(cursor_pos);
-        } else {
-          assert(0);
         }
         input_status = INIT;
         continue;
@@ -122,8 +120,6 @@ class REPL {
           cursorMoveRightOneWord(cursor_pos, cmd_line);
         } else if (ch == 'D') {
           cursorMoveLeftOneWord(cursor_pos, cmd_line);
-        } else {
-          assert(0);
         }
         input_status = INIT;
       }
@@ -284,7 +280,7 @@ class REPL {
       cursor_pos++;
     }
     // 光标需要在单词的后面，故这里需要再退一格
-    if (cursor_pos + 1 <= cmd_line.size()) {
+    if (cursor_pos < cmd_line.size()) {
       printf("\033[1C");  // 光标右移一格的组合
       cursor_pos++;
     }
